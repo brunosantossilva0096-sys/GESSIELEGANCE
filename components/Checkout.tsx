@@ -58,9 +58,28 @@ export const Checkout: React.FC<CheckoutProps> = ({
     if (deliveryType === 'pickup') {
       setStep('payment');
     } else {
-      if (!selectedAddress || !shippingMethod) return;
+      if (!selectedAddress) return;
+      // Calcular frete automaticamente com CEP do endereço do usuário
+      if (!shippingQuote) {
+        calculateShippingWithUserAddress();
+      } else {
+        setStep('payment');
+      }
+    }
+  };
+
+  const calculateShippingWithUserAddress = async () => {
+    setIsLoadingShipping(true);
+    
+    const result = await shippingService.calculateShipping(selectedAddress.zip, subtotal);
+    if (result.success && result.quotes.length > 0) {
+      const cheapest = result.quotes[0];
+      setShippingQuote({ cost: cheapest.cost, estimatedDays: cheapest.estimatedDays });
+      setShippingMethod({ id: cheapest.method.id, name: cheapest.method.name, cost: cheapest.cost });
       setStep('payment');
     }
+    
+    setIsLoadingShipping(false);
   };
 
   const handleCompleteOrder = async () => {
