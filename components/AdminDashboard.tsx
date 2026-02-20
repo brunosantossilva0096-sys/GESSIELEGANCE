@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { db, orderService } from '../services';
-import type { Product, Order, Category, StoreConfig } from '../types';
+import { db, orderService, auth } from '../services';
+import type { Product, Order, Category, StoreConfig, User } from '../types';
 import { OrderStatus } from '../types';
-import { Plus, Trash2, Edit, Save, X, Package, ShoppingBag, TrendingUp, Users, DollarSign, AlertCircle, CheckCircle, Truck } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Plus, Trash2, Edit, Save, X, Package, ShoppingBag, TrendingUp, Users, DollarSign, AlertCircle, CheckCircle, Truck, Calculator, UserPlus, TrendingDown } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 
 interface AdminDashboardProps {
   storeConfig: StoreConfig | null;
@@ -17,10 +17,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [activeTab, setActiveTab] = useState<'stats' | 'products' | 'orders' | 'categories'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'products' | 'orders' | 'categories' | 'finance' | 'employees'>('stats');
   const [isEditing, setIsEditing] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [stats, setStats] = useState({
     totalSales: 0,
     totalOrders: 0,
@@ -32,14 +33,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     lowStock: 0,
   });
 
+  // Profit report state
+  const [profitReport, setProfitReport] = useState<{
+    totalRevenue: number;
+    totalCost: number;
+    grossProfit: number;
+    profitMargin: number;
+    totalOrders: number;
+    averageOrderValue: number;
+    salesByPaymentMethod: Record<string, number>;
+    dailyBreakdown: { date: string; revenue: number; cost: number; profit: number; orders: number }[];
+  } | null>(null);
+  const [reportPeriod, setReportPeriod] = useState<'today' | 'week' | 'month' | 'year'>('month');
+
+  // Employees state
+  const [employees, setEmployees] = useState<User[]>([]);
+  const [showEmployeeForm, setShowEmployeeForm] = useState(false);
+  const [employeeForm, setEmployeeForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    phone: '',
+  });
+
   const [formData, setFormData] = useState<Partial<Product>>({
     name: '',
     description: '',
     price: 0,
+    costPrice: 0,
     promotionalPrice: undefined,
     category: '',
     categoryId: '',
     stock: 0,
+    minStock: 5,
     sizes: [],
     colors: [],
     images: [''],
@@ -53,16 +79,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const refreshData = async () => {
     setIsLoading(true);
     try {
-      const [prods, ords, cats, dashboardStats] = await Promise.all([
+      const [prods, ords, cats, dashboardStats, profitRep, emps] = await Promise.all([
         db.getAllProducts(),
         orderService.getAllOrders(),
         db.getAllCategories(),
         orderService.getDashboardStats(),
+        orderService.getProfitReport(),
+        auth.getAllEmployees(),
       ]);
 
       setProducts(prods);
       setOrders(ords.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       setCategories(cats);
+      setProfitReport(profitRep);
+      setEmployees(emps);
+      setCurrentUser(auth.getCurrentUser());
 
       setStats({
         totalSales: dashboardStats.totalSales,
@@ -72,7 +103,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         ordersPending: dashboardStats.ordersPending,
         ordersPaid: dashboardStats.ordersPaid,
         ordersShipped: dashboardStats.ordersShipped,
-        lowStock: prods.filter(p => p.stock < 5 && p.isActive).length,
+        lowStock: prods.filter(p => (p.minStock || 5) >= p.stock && p.isActive).length,
       });
     } catch (error) {
       console.error('Error refreshing data:', error);
@@ -136,6 +167,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const handleCreateEmployee = async () => {
+    if (!employeeForm.name || !employeeForm.email || !employeeForm.password) {
+      alert('Preencha todos os campos obrigatórios');
+      return;
+    }
+
+    const result = await auth.createEmployee({
+      name: employeeForm.name,
+      email: employeeForm.email,
+      password: employeeForm.password,
+      phone: employeeForm.phone,
+    });
+
+    if (result.success) {
+      alert('Funcionário cadastrado com sucesso!');
+      setShowEmployeeForm(false);
+      setEmployeeForm({ name: '', email: '', password: '', phone: '' });
+      refreshData();
+    } else {
+      alert(result.message || 'Erro ao cadastrar funcionário');
+    }
+  };
+
+  const handleToggleUserStatus = async (userId: string) => {
+    const result = await auth.toggleUserStatus(userId);
+    if (result.success) {
+      refreshData();
+    } else {
+      alert(result.message);
+    }
+  };
+
   const handleUpdateOrderStatus = async (orderId: string, status: OrderStatus) => {
     try {
       await orderService.updateOrderStatus(orderId, status);
@@ -187,8 +250,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <p className="text-gray-500">Gerencie sua loja e acompanhe os resultados</p>
         </div>
 
-        <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
-          {(['stats', 'products', 'orders', 'categories'] as const).map(tab => (
+        <div className="flex gap-2 bg-gray-100 p-1 rounded-lg flex-wrap">
+          {(['stats', 'products', 'orders', 'categories', 'finance', 'employees'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -200,6 +263,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {tab === 'products' && 'Produtos'}
               {tab === 'orders' && 'Pedidos'}
               {tab === 'categories' && 'Categorias'}
+              {tab === 'finance' && 'Financeiro'}
+              {tab === 'employees' && 'Funcionários'}
             </button>
           ))}
         </div>
@@ -365,6 +430,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     />
                   </div>
 
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Preço de Custo (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="w-full border border-gray-200 rounded-lg p-2.5"
+                      value={formData.costPrice || ''}
+                      onChange={e => setFormData({ ...formData, costPrice: e.target.value ? Number(e.target.value) : undefined })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Estoque Mínimo</label>
+                    <input
+                      type="number"
+                      className="w-full border border-gray-200 rounded-lg p-2.5"
+                      value={formData.minStock || ''}
+                      onChange={e => setFormData({ ...formData, minStock: e.target.value ? Number(e.target.value) : undefined })}
+                    />
+                  </div>
+
                   <div className="col-span-2">
                     <label className="block text-sm font-medium mb-1">URL da Imagem</label>
                     <input
@@ -412,7 +498,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <tr>
                   <th className="px-6 py-4 font-semibold text-sm">Produto</th>
                   <th className="px-6 py-4 font-semibold text-sm">Categoria</th>
-                  <th className="px-6 py-4 font-semibold text-sm">Preço</th>
+                  <th className="px-6 py-4 font-semibold text-sm">Preço Venda</th>
+                  <th className="px-6 py-4 font-semibold text-sm">Preço Custo</th>
                   <th className="px-6 py-4 font-semibold text-sm">Estoque</th>
                   <th className="px-6 py-4 font-semibold text-sm text-right">Ações</th>
                 </tr>
@@ -440,11 +527,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <span className="font-semibold">{formatCurrency(p.price)}</span>
                       )}
                     </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {p.costPrice ? formatCurrency(p.costPrice) : '-'}
+                    </td>
                     <td className="px-6 py-4">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                        p.stock < 5 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'
+                        p.stock <= (p.minStock || 5) ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'
                       }`}>
-                        {p.stock} un.
+                        {p.stock} / {p.minStock || 5} min
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
@@ -542,6 +632,242 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <p className="text-sm text-gray-600 mt-2">{cat.description || 'Sem descrição'}</p>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Finance Tab */}
+      {activeTab === 'finance' && profitReport && (
+        <div className="animate-in fade-in space-y-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-bold">Relatório Financeiro</h2>
+            <div className="flex gap-2">
+              {(['today', 'week', 'month', 'year'] as const).map(period => (
+                <button
+                  key={period}
+                  onClick={() => setReportPeriod(period)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    reportPeriod === period ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {period === 'today' && 'Hoje'}
+                  {period === 'week' && 'Semana'}
+                  {period === 'month' && 'Mês'}
+                  {period === 'year' && 'Ano'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Profit Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatCard
+              icon={<DollarSign className="w-6 h-6 text-green-600" />}
+              label="Receita Total"
+              value={formatCurrency(profitReport.totalRevenue)}
+            />
+            <StatCard
+              icon={<TrendingDown className="w-6 h-6 text-red-600" />}
+              label="Custo Total"
+              value={formatCurrency(profitReport.totalCost)}
+            />
+            <StatCard
+              icon={<TrendingUp className="w-6 h-6 text-blue-600" />}
+              label="Lucro Bruto"
+              value={formatCurrency(profitReport.grossProfit)}
+            />
+            <StatCard
+              icon={<CheckCircle className="w-6 h-6 text-purple-600" />}
+              label="Margem de Lucro"
+              value={`${profitReport.profitMargin.toFixed(1)}%`}
+            />
+          </div>
+
+          {/* Daily Breakdown Chart */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            <h3 className="font-bold text-gray-900 mb-6">Evolução Diária</h3>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={profitReport.dailyBreakdown}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                  <Line type="monotone" dataKey="revenue" stroke="#22c55e" name="Receita" strokeWidth={2} />
+                  <Line type="monotone" dataKey="cost" stroke="#ef4444" name="Custo" strokeWidth={2} />
+                  <Line type="monotone" dataKey="profit" stroke="#3b82f6" name="Lucro" strokeWidth={2} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Payment Methods */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            <h3 className="font-bold text-gray-900 mb-6">Vendas por Forma de Pagamento</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {Object.entries(profitReport.salesByPaymentMethod).map(([method, value]) => (
+                <div key={method} className="p-4 bg-gray-50 rounded-lg">
+                  <p className="text-sm text-gray-500">
+                    {method === 'PIX' && 'PIX'}
+                    {method === 'CREDIT_CARD' && 'Cartão de Crédito'}
+                    {method === 'DEBIT_CARD' && 'Cartão de Débito'}
+                    {method === 'CASH' && 'Dinheiro'}
+                    {method === 'BOLETO' && 'Boleto'}
+                  </p>
+                  <p className="text-lg font-bold text-gray-900">{formatCurrency(Number(value))}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Employees Tab - Admin Only */}
+      {activeTab === 'employees' && currentUser?.role === 'admin' && (
+        <div className="animate-in fade-in">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold">Gerenciamento de Funcionários</h2>
+            <button
+              onClick={() => setShowEmployeeForm(true)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+            >
+              <UserPlus className="w-4 h-4" /> Novo Funcionário
+            </button>
+          </div>
+
+          {/* Employee Form Modal */}
+          {showEmployeeForm && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-bold">Cadastrar Funcionário</h3>
+                  <button onClick={() => setShowEmployeeForm(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Nome</label>
+                    <input
+                      type="text"
+                      className="w-full border border-gray-200 rounded-lg p-2.5"
+                      value={employeeForm.name}
+                      onChange={e => setEmployeeForm({ ...employeeForm, name: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">E-mail</label>
+                    <input
+                      type="email"
+                      className="w-full border border-gray-200 rounded-lg p-2.5"
+                      value={employeeForm.email}
+                      onChange={e => setEmployeeForm({ ...employeeForm, email: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Senha</label>
+                    <input
+                      type="password"
+                      className="w-full border border-gray-200 rounded-lg p-2.5"
+                      value={employeeForm.password}
+                      onChange={e => setEmployeeForm({ ...employeeForm, password: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Telefone</label>
+                    <input
+                      type="tel"
+                      className="w-full border border-gray-200 rounded-lg p-2.5"
+                      value={employeeForm.phone}
+                      onChange={e => setEmployeeForm({ ...employeeForm, phone: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-6 flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowEmployeeForm(false)}
+                    className="px-6 py-2.5 text-gray-600 hover:bg-gray-100 rounded-lg"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleCreateEmployee}
+                    className="bg-blue-600 text-white px-8 py-2.5 rounded-lg font-semibold hover:bg-blue-700 flex items-center gap-2"
+                  >
+                    <Save className="w-4 h-4" /> Cadastrar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Employees Table */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <table className="w-full text-left">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="px-6 py-4 font-semibold text-sm">Nome</th>
+                  <th className="px-6 py-4 font-semibold text-sm">E-mail</th>
+                  <th className="px-6 py-4 font-semibold text-sm">Telefone</th>
+                  <th className="px-6 py-4 font-semibold text-sm">Status</th>
+                  <th className="px-6 py-4 font-semibold text-sm text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {employees.map(emp => (
+                  <tr key={emp.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                          <Users className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <span className="font-medium text-gray-900">{emp.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{emp.email}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{emp.phone || '-'}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                        emp.isActive ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
+                      }`}>
+                        {emp.isActive ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        onClick={() => handleToggleUserStatus(emp.id)}
+                        className={`px-3 py-1 rounded-lg text-sm font-medium ${
+                          emp.isActive 
+                            ? 'bg-red-100 text-red-600 hover:bg-red-200' 
+                            : 'bg-green-100 text-green-600 hover:bg-green-200'
+                        }`}
+                      >
+                        {emp.isActive ? 'Desativar' : 'Ativar'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {employees.length === 0 && (
+              <div className="py-12 text-center text-gray-500">Nenhum funcionário cadastrado</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Employees Tab - Employee View (no access) */}
+      {activeTab === 'employees' && currentUser?.role === 'employee' && (
+        <div className="animate-in fade-in">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-center">
+            <AlertCircle className="w-12 h-12 text-yellow-600 mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-yellow-800 mb-2">Acesso Restrito</h3>
+            <p className="text-yellow-700">Apenas administradores podem gerenciar funcionários.</p>
           </div>
         </div>
       )}

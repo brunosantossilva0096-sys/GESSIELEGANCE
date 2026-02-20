@@ -4,11 +4,13 @@ export interface Product {
   name: string;
   description: string;
   price: number;
+  costPrice?: number;
   promotionalPrice?: number;
   images: string[];
   category: string;
   categoryId: string;
   stock: number;
+  minStock?: number;
   sizes: string[];
   colors: ColorOption[];
   tags: string[];
@@ -32,7 +34,7 @@ export interface User {
   phone?: string;
   birthDate?: string;
   addresses: Address[];
-  role: 'admin' | 'customer';
+  role: 'admin' | 'employee' | 'customer';
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -87,7 +89,8 @@ export enum PaymentMethod {
   PIX = 'PIX',
   CREDIT_CARD = 'CREDIT_CARD',
   DEBIT_CARD = 'DEBIT_CARD',
-  BOLETO = 'BOLETO'
+  BOLETO = 'BOLETO',
+  CASH = 'CASH'
 }
 
 export interface Order {
@@ -152,7 +155,7 @@ export interface Category {
 export interface ShippingMethod {
   id: string;
   name: string;
-  type: 'correios' | 'transportadora' | 'motoboy' | 'retirada' | 'personalizado';
+  type: 'correios' | 'transportadora' | 'motoboy' | 'retirada' | 'personalizado' | 'jadlog' | 'loggi' | 'azul' | 'latam' | 'buslog' | 'other';
   provider?: string;
   cost: number;
   estimatedDays: string;
@@ -165,6 +168,12 @@ export interface ShippingMethod {
     fixedCost?: number;
     regionCosts?: { region: string; cost: number }[];
   };
+}
+
+export interface ShippingQuote {
+  method: ShippingMethod;
+  cost: number;
+  estimatedDays: string;
 }
 
 export interface StoreConfig {
@@ -184,6 +193,10 @@ export interface StoreConfig {
     apiKey: string;
     sandbox: boolean;
     webhookSecret?: string;
+  };
+  melhorEnvioConfig?: {
+    apiKey: string;
+    sandbox: boolean;
   };
   shippingConfig?: {
     defaultMethod: string;

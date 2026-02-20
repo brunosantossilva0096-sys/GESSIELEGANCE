@@ -63,6 +63,82 @@ class AuthService {
     return this.currentUser?.role === 'admin';
   }
 
+  isEmployee(): boolean {
+    return this.currentUser?.role === 'employee' || this.currentUser?.role === 'admin';
+  }
+
+  // Employee management (admin only)
+  async createEmployee(data: RegisterData): Promise<AuthResponse> {
+    try {
+      // Check if user already exists
+      const existingUser = await db.getUserByEmail(data.email);
+      if (existingUser) {
+        return { success: false, message: 'Este e-mail já está cadastrado' };
+      }
+
+      // Hash password
+      const hashedPassword = await hashPassword(data.password);
+
+      // Create employee user
+      const newUser: User = {
+        id: generateId(),
+        name: data.name,
+        email: data.email.toLowerCase(),
+        password: hashedPassword,
+        cpf: data.cpf,
+        phone: data.phone,
+        birthDate: data.birthDate,
+        addresses: [],
+        role: 'employee',
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      await db.addUser(newUser);
+
+      return {
+        success: true,
+        user: { ...newUser, password: undefined },
+        message: 'Funcionário cadastrado com sucesso'
+      };
+    } catch (error) {
+      console.error('Create employee error:', error);
+      return { success: false, message: 'Erro ao cadastrar funcionário. Tente novamente.' };
+    }
+  }
+
+  async getAllEmployees(): Promise<User[]> {
+    try {
+      const users = await db.getAllUsers();
+      return users.filter(u => u.role === 'employee');
+    } catch (error) {
+      console.error('Get employees error:', error);
+      return [];
+    }
+  }
+
+  async toggleUserStatus(userId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const user = await db.getUserById(userId);
+      if (!user) {
+        return { success: false, message: 'Usuário não encontrado' };
+      }
+
+      user.isActive = !user.isActive;
+      user.updatedAt = new Date().toISOString();
+      await db.updateUser(user);
+
+      return {
+        success: true,
+        message: user.isActive ? 'Usuário ativado com sucesso' : 'Usuário desativado com sucesso'
+      };
+    } catch (error) {
+      console.error('Toggle user status error:', error);
+      return { success: false, message: 'Erro ao alterar status do usuário' };
+    }
+  }
+
   async register(data: RegisterData): Promise<AuthResponse> {
     try {
       // Check if user already exists

@@ -5,6 +5,7 @@ export { asaas } from './asaas';
 export { orderService } from './orders';
 export { cartService } from './cart';
 export { shippingService } from './shipping';
+export { melhorEnvio } from './melhorEnvio';
 export { pdfService } from './pdf';
 export { emailService } from './email';
 export { initializeServices } from './initialize';

@@ -243,7 +243,7 @@ class AsaasService {
         billingType: this.mapPaymentMethod(order.paymentMethod),
         value: order.total,
         dueDate: new Date().toISOString().split('T')[0],
-        description: `Pedido ${order.orderNumber} - VendaPro`,
+        description: `Pedido ${order.orderNumber} - GessiElegance`,
         externalReference: order.id,
       };
 

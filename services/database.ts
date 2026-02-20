@@ -1,6 +1,6 @@
 import type { Product, User, Order, Payment, Category, ShippingMethod, StoreConfig } from '../types';
 
-const DB_NAME = 'VendaProDB';
+const DB_NAME = 'GessiEleganceDB';
 const DB_VERSION = 1;
 
 export class DatabaseService {

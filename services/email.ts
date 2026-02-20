@@ -20,8 +20,8 @@ interface OrderEmailData {
 }
 
 class EmailService {
-  private storeName: string = 'VendaPro';
-  private storeEmail: string = 'contato@vendapro.com.br';
+  private storeName: string = 'GessiElegance';
+  private storeEmail: string = 'contato@gessielegance.com.br';
 
   configure(storeName: string, storeEmail: string) {
     this.storeName = storeName;

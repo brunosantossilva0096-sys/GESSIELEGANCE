@@ -1,6 +1,6 @@
 import type { CartItem, ColorOption } from '../types';
 
-const CART_STORAGE_KEY = 'vendapro_cart';
+const CART_STORAGE_KEY = 'gessielegance_cart';
 const CART_EXPIRY_DAYS = 30;
 
 interface CartData {

@@ -1,5 +1,6 @@
+import { OrderStatus, PaymentStatus } from '../types';
 import { db } from './database';
-import type { Order, OrderStatus, PaymentStatus, CartItem, Address, ShippingMethod, PaymentMethod } from '../types';
+import type { Order, CartItem, Address, ShippingMethod, PaymentMethod } from '../types';
 
 const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 
@@ -290,6 +291,80 @@ class OrderService {
       }))
       .sort((a, b) => b.totalSold - a.totalSold)
       .slice(0, limit);
+  }
+
+  // Profit/Loss Report
+  async getProfitReport(startDate?: Date, endDate?: Date): Promise<{
+    totalRevenue: number;
+    totalCost: number;
+    grossProfit: number;
+    profitMargin: number;
+    totalOrders: number;
+    averageOrderValue: number;
+    salesByPaymentMethod: Record<string, number>;
+    dailyBreakdown: { date: string; revenue: number; cost: number; profit: number; orders: number }[];
+  }> {
+    const allOrders = await db.getAllOrders();
+    const allProducts = await db.getAllProducts();
+    
+    const productCostMap = new Map(allProducts.map(p => [p.id, p.costPrice || p.price * 0.5]));
+
+    let filteredOrders = allOrders.filter(o => o.status !== OrderStatus.CANCELLED);
+    
+    if (startDate) {
+      filteredOrders = filteredOrders.filter(o => new Date(o.createdAt) >= startDate);
+    }
+    if (endDate) {
+      filteredOrders = filteredOrders.filter(o => new Date(o.createdAt) <= endDate);
+    }
+
+    let totalRevenue = 0;
+    let totalCost = 0;
+    const salesByPaymentMethod: Record<string, number> = {};
+    const dailyMap = new Map<string, { revenue: number; cost: number; profit: number; orders: number }>();
+
+    for (const order of filteredOrders) {
+      totalRevenue += order.total;
+      
+      // Calculate cost
+      let orderCost = 0;
+      for (const item of order.items) {
+        const costPrice = productCostMap.get(item.productId) || item.price * 0.5;
+        orderCost += costPrice * item.quantity;
+      }
+      totalCost += orderCost;
+
+      // Payment method stats
+      const paymentMethod = order.paymentMethod || 'OTHER';
+      salesByPaymentMethod[paymentMethod] = (salesByPaymentMethod[paymentMethod] || 0) + order.total;
+
+      // Daily breakdown
+      const date = order.createdAt.split('T')[0];
+      const dayStats = dailyMap.get(date) || { revenue: 0, cost: 0, profit: 0, orders: 0 };
+      dayStats.revenue += order.total;
+      dayStats.cost += orderCost;
+      dayStats.profit += order.total - orderCost;
+      dayStats.orders += 1;
+      dailyMap.set(date, dayStats);
+    }
+
+    const grossProfit = totalRevenue - totalCost;
+    const profitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+
+    const dailyBreakdown = Array.from(dailyMap.entries())
+      .map(([date, stats]) => ({ date, ...stats }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    return {
+      totalRevenue,
+      totalCost,
+      grossProfit,
+      profitMargin,
+      totalOrders: filteredOrders.length,
+      averageOrderValue: filteredOrders.length > 0 ? totalRevenue / filteredOrders.length : 0,
+      salesByPaymentMethod,
+      dailyBreakdown,
+    };
   }
 }
 

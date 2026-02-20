@@ -150,7 +150,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
     if (order) {
       pdfService.openReceipt({
         order,
-        storeName: storeConfig?.name || 'VendaPro',
+        storeName: storeConfig?.name || 'GessiElegance',
         storeEmail: storeConfig?.contactEmail,
         storePhone: storeConfig?.contactPhone,
       });

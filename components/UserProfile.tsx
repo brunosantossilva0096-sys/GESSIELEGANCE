@@ -223,8 +223,8 @@ export const UserProfile: React.FC<UserProfileProps> = ({
                           <button
                             onClick={() => pdfService.openReceipt({
                               order,
-                              storeName: 'VendaPro Moda',
-                              storeEmail: 'contato@vendapro.com.br',
+                              storeName: 'GessiElegance Moda',
+                              storeEmail: 'contato@gessielegance.com.br',
                             })}
                             className="text-blue-600 hover:underline text-sm"
                           >

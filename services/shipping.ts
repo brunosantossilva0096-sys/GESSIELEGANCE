@@ -1,5 +1,6 @@
 import { db } from './database';
-import type { ShippingMethod } from '../types';
+import { melhorEnvio } from './melhorEnvio';
+import type { ShippingMethod, ShippingQuote } from '../types';
 
 // Brazilian states for region-based shipping
 const BRAZILIAN_STATES = [
@@ -31,13 +32,6 @@ const BRAZILIAN_STATES = [
   { code: 'SE', name: 'Sergipe', region: 'nordeste' },
   { code: 'TO', name: 'Tocantins', region: 'norte' },
 ];
-
-interface ShippingQuote {
-  method: ShippingMethod;
-  cost: number;
-  estimatedDays: string;
-  estimatedDate?: string;
-}
 
 interface CepInfo {
   cep: string;
@@ -94,6 +88,36 @@ class ShippingService {
         return { success: false, quotes: [], error: cepInfo.error };
       }
 
+      // Try to use Melhor Envio API first
+      const storeConfig = await db.getStoreConfig();
+      if (storeConfig?.melhorEnvioConfig?.apiKey) {
+        melhorEnvio.configure(
+          storeConfig.melhorEnvioConfig.apiKey,
+          storeConfig.melhorEnvioConfig.sandbox
+        );
+
+        const melhorEnvioQuotes = await melhorEnvio.calculateShipping(
+          storeConfig.shippingConfig?.zipOrigin || '01001000', // Default to São Paulo
+          cep,
+          weight,
+          dimensions
+        );
+
+        // Apply free shipping if applicable
+        if (storeConfig.shippingConfig?.freeShippingAbove && orderValue >= storeConfig.shippingConfig.freeShippingAbove) {
+          melhorEnvioQuotes.forEach(quote => {
+            quote.cost = 0;
+            quote.method.cost = 0;
+          });
+        }
+
+        return {
+          success: true,
+          quotes: melhorEnvioQuotes,
+        };
+      }
+
+      // Fallback to manual shipping methods
       const methods = await db.getActiveShippingMethods();
       const quotes: ShippingQuote[] = [];
 
@@ -145,7 +169,6 @@ class ShippingService {
       method,
       cost,
       estimatedDays: method.estimatedDays,
-      estimatedDate: estimatedDate?.toISOString(),
     };
   }
 

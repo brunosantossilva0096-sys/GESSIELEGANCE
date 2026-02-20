@@ -8,6 +8,7 @@ import { Register } from './components/Register';
 import { ForgotPassword } from './components/ForgotPassword';
 import { UserProfile } from './components/UserProfile';
 import { Cart } from './components/Cart';
+import { PDV } from './components/PDV';
 import { db, auth, cartService, initializeServices } from './services';
 import type { CartItem, Product, User, Category, StoreConfig } from './types';
 import { Loader2 } from 'lucide-react';
@@ -17,6 +18,7 @@ interface AppContextType {
   user: User | null;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  isEmployee: boolean;
   cart: CartItem[];
   cartCount: number;
   categories: Category[];
@@ -41,7 +43,7 @@ export const useApp = () => {
 };
 
 // View types
-type ViewType = 'store' | 'admin' | 'profile' | 'cart' | 'checkout' | 'login' | 'register' | 'forgot-password';
+type ViewType = 'store' | 'admin' | 'profile' | 'cart' | 'checkout' | 'login' | 'register' | 'forgot-password' | 'pdv';
 
 const App: React.FC = () => {
   const [view, setView] = useState<ViewType>('store');
@@ -223,11 +225,20 @@ const App: React.FC = () => {
         );
 
       case 'admin':
-        return user?.role === 'admin' ? (
+        return user?.role === 'admin' || user?.role === 'employee' ? (
           <AdminDashboard
             storeConfig={storeConfig}
             onConfigUpdate={setStoreConfig}
           />
+        ) : (
+          <Storefront
+            onAddToCart={addToCart}
+          />
+        );
+
+      case 'pdv':
+        return user?.role === 'admin' || user?.role === 'employee' ? (
+          <PDV onClose={() => setView('store')} />
         ) : (
           <Storefront
             onAddToCart={addToCart}
@@ -293,6 +304,7 @@ const App: React.FC = () => {
     user,
     isAuthenticated: !!user,
     isAdmin: user?.role === 'admin',
+    isEmployee: user?.role === 'admin' || user?.role === 'employee',
     cart,
     cartCount: cartService.getItemCount(),
     categories,
