@@ -2,6 +2,9 @@ import { db } from './database';
 import { auth } from './auth';
 import { cartService } from './cart';
 import { emailService } from './email';
+import { shippingService } from './shipping';
+import { melhorEnvio } from './melhorEnvio';
+import { superfrete } from './superfrete';
 import type { StoreConfig } from '../types';
 
 const STORE_CONFIG_KEY = 'gessielegance_config';
@@ -49,10 +52,27 @@ export async function initializeServices(): Promise<void> {
   const currentUser = auth.getCurrentUser();
   cartService.init(currentUser?.id);
 
+  // Initialize SuperFrete
+  const SUPERFRETE_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NzE1NTIyNDIsInN1YiI6Ink5S2NvODVBemJORU5zdU1aYU92czJ5WGIzZjEifQ.GmKwIgJxsvcLUaVjgF677OaEjlgu6bMBjprJ-ESaGE8';
+  
+  if (SUPERFRETE_TOKEN) {
+    shippingService.configureSuperFrete(SUPERFRETE_TOKEN, false); // Production mode
+    console.log('✅ SuperFrete initialized');
+  }
+
   // Initialize email service
   const storeConfig = await db.getStoreConfig();
   if (storeConfig) {
     emailService.configure(storeConfig.name, storeConfig.contactEmail);
+    
+    // Initialize Melhor Envio if configured
+    if (storeConfig.melhorEnvioConfig?.apiKey) {
+      melhorEnvio.configure(
+        storeConfig.melhorEnvioConfig.apiKey,
+        storeConfig.melhorEnvioConfig.sandbox
+      );
+      console.log('✅ Melhor Envio initialized');
+    }
   } else {
     // Save default config
     await db.saveStoreConfig(defaultStoreConfig);

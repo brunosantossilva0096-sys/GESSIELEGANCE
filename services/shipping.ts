@@ -1,5 +1,6 @@
 import { db } from './database';
 import { melhorEnvio } from './melhorEnvio';
+import { superfrete } from './superfrete';
 import type { ShippingMethod, ShippingQuote } from '../types';
 
 // Brazilian states for region-based shipping
@@ -44,6 +45,13 @@ interface CepInfo {
 }
 
 class ShippingService {
+  private superfreteConfigured = false;
+
+  // Configure SuperFrete
+  configureSuperFrete(token: string, sandbox: boolean = false) {
+    superfrete.configure(token, sandbox);
+    this.superfreteConfigured = true;
+  }
   // Consult CEP using ViaCEP API
   async consultCep(cep: string): Promise<CepInfo> {
     try {
@@ -88,7 +96,46 @@ class ShippingService {
         return { success: false, quotes: [], error: cepInfo.error };
       }
 
-      // Try to use Melhor Envio API first
+      // Try SuperFrete API first (prioridade)
+      if (this.superfreteConfigured) {
+        const products = [{
+          name: 'Produtos',
+          quantity: 1,
+          value: orderValue,
+          weight: weight,
+          dimensions: dimensions || { height: 10, width: 10, length: 10 }
+        }];
+
+        const superfreteResult = await superfrete.calculateShipping(
+          '65058619', // CEP de origem
+          cep,
+          products,
+          {
+            insuranceValue: orderValue,
+            receipt: false,
+            ownHand: false,
+            collect: false
+          }
+        );
+
+        if (superfreteResult.success && superfreteResult.quotes.length > 0) {
+          // Apply free shipping if applicable
+          const storeConfig = await db.getStoreConfig();
+          if (storeConfig.shippingConfig?.freeShippingAbove && orderValue >= storeConfig.shippingConfig.freeShippingAbove) {
+            superfreteResult.quotes.forEach(quote => {
+              quote.cost = 0;
+              quote.method.cost = 0;
+            });
+          }
+
+          return {
+            success: true,
+            quotes: superfreteResult.quotes,
+          };
+        }
+      }
+
+      // Try Melhor Envio API as second option
       const storeConfig = await db.getStoreConfig();
       if (storeConfig?.melhorEnvioConfig?.apiKey) {
         melhorEnvio.configure(
