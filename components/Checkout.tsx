@@ -4,6 +4,25 @@ import { PaymentMethod, PaymentStatus } from '../types';
 import { orderService, asaas, shippingService, emailService, pdfService, whatsappService } from '../services';
 import { CreditCard, QrCode, ShieldCheck, CheckCircle2, ArrowLeft, Loader2, MapPin, Truck } from 'lucide-react';
 
+// Helper function para calcular frete
+async function calcularFreteLocal({ to_postal_code, products }) {
+  const r = await fetch("/api/superfrete/cotacao", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      to_postal_code,
+      services: "1,2,17",
+      products
+    })
+  });
+
+  const ct = r.headers.get("content-type") || "";
+  const data = ct.includes("application/json") ? await r.json() : await r.text();
+
+  if (!r.ok) throw new Error(typeof data === "string" ? data : JSON.stringify(data));
+  return data;
+}
+
 interface CheckoutProps {
   user: User;
   cart: CartItem[];
@@ -71,12 +90,45 @@ export const Checkout: React.FC<CheckoutProps> = ({
   const calculateShippingWithUserAddress = async () => {
     setIsLoadingShipping(true);
     
-    const result = await shippingService.calculateShipping(selectedAddress.zip, subtotal);
-    if (result.success && result.quotes.length > 0) {
-      const cheapest = result.quotes[0];
-      setShippingQuote({ cost: cheapest.cost, estimatedDays: cheapest.estimatedDays });
-      setShippingMethod({ id: cheapest.method.id, name: cheapest.method.name, cost: cheapest.cost });
-      setStep('payment');
+    try {
+      const products = cart.map(item => ({
+        quantity: item.quantity,
+        height: item.heightCm || 10,
+        width: item.widthCm || 10,
+        length: item.lengthCm || 10,
+        weight: item.weightKg || 0.5
+      }));
+
+      const cotacao = await calcularFreteLocal({
+        to_postal_code: selectedAddress.zip,
+        products
+      });
+
+      if (cotacao && Array.isArray(cotacao) && cotacao.length > 0) {
+        const primeiraOpcao = cotacao[0];
+        setShippingQuote({ 
+          cost: primeiraOpcao.price || primeiraOpcao.cost, 
+          estimatedDays: primeiraOpcao.delivery_time || primeiraOpcao.estimatedDays 
+        });
+        setShippingMethod({ 
+          id: primeiraOpcao.service_id || primeiraOpcao.id, 
+          name: primeiraOpcao.company?.name || primeiraOpcao.name, 
+          cost: primeiraOpcao.price || primeiraOpcao.cost 
+        });
+        setStep('payment');
+      } else {
+        // Fallback para cálculo manual
+        const result = await shippingService.calculateShipping(selectedAddress.zip, subtotal);
+        if (result.success && result.quotes.length > 0) {
+          const cheapest = result.quotes[0];
+          setShippingQuote({ cost: cheapest.cost, estimatedDays: cheapest.estimatedDays });
+          setShippingMethod({ id: cheapest.method.id, name: cheapest.method.name, cost: cheapest.cost });
+          setStep('payment');
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao calcular frete:', error);
+      alert('Erro ao calcular frete. Tente novamente.');
     }
     
     setIsLoadingShipping(false);
