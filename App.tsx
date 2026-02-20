@@ -9,6 +9,7 @@ import { ForgotPassword } from './components/ForgotPassword';
 import { UserProfile } from './components/UserProfile';
 import { Cart } from './components/Cart';
 import { PDV } from './components/PDV';
+import OrderTracking from './components/OrderTracking';
 import { db, auth, cartService, initializeServices } from './services';
 import type { CartItem, Product, User, Category, StoreConfig } from './types';
 import { Loader2 } from 'lucide-react';
@@ -43,7 +44,7 @@ export const useApp = () => {
 };
 
 // View types
-type ViewType = 'store' | 'admin' | 'profile' | 'cart' | 'checkout' | 'login' | 'register' | 'forgot-password' | 'pdv';
+type ViewType = 'store' | 'admin' | 'profile' | 'cart' | 'checkout' | 'login' | 'register' | 'forgot-password' | 'pdv' | 'order-tracking';
 
 const App: React.FC = () => {
   const [view, setView] = useState<ViewType>('store');
@@ -237,6 +238,7 @@ const App: React.FC = () => {
         );
 
       case 'pdv':
+        console.log('Rendering PDV view, user:', user?.role);
         return user?.role === 'admin' || user?.role === 'employee' ? (
           <PDV onClose={() => setView('store')} />
         ) : (
@@ -275,6 +277,14 @@ const App: React.FC = () => {
             onRemove={removeFromCart}
             onCheckout={goToCheckout}
             onContinueShopping={goToStore}
+          />
+        );
+
+      case 'order-tracking':
+        return (
+          <OrderTracking
+            orderId={''} // Order ID will be passed via URL params in a real implementation
+            onBack={() => setView('store')}
           />
         );
 

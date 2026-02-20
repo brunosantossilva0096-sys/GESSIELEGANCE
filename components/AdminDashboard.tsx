@@ -251,7 +251,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         <div className="flex gap-2 bg-gray-100 p-1 rounded-lg flex-wrap">
-          {(['stats', 'products', 'orders', 'categories', 'finance', 'employees'] as const).map(tab => (
+          {(['stats', 'products', 'orders', 'categories'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -263,10 +263,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {tab === 'products' && 'Produtos'}
               {tab === 'orders' && 'Pedidos'}
               {tab === 'categories' && 'Categorias'}
-              {tab === 'finance' && 'Financeiro'}
-              {tab === 'employees' && 'Funcionários'}
             </button>
           ))}
+          {currentUser?.role === 'admin' && (
+            <>
+              <button
+                onClick={() => setActiveTab('finance')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                  activeTab === 'finance' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Financeiro
+              </button>
+              <button
+                onClick={() => setActiveTab('employees')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                  activeTab === 'employees' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Funcionários
+              </button>
+            </>
+          )}
         </div>
       </div>
 

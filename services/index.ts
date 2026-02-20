@@ -8,4 +8,5 @@ export { shippingService } from './shipping';
 export { melhorEnvio } from './melhorEnvio';
 export { pdfService } from './pdf';
 export { emailService } from './email';
+export { whatsappService } from './whatsapp';
 export { initializeServices } from './initialize';

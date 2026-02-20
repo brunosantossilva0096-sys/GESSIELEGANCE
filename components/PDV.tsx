@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, orderService, auth } from '../services';
-import type { Product, CartItem, Order, PaymentMethod } from '../types';
-import { OrderStatus, PaymentStatus } from '../types';
+import type { Product, CartItem, Order } from '../types';
+import { OrderStatus, PaymentStatus, PaymentMethod } from '../types';
 import { 
   ShoppingCart, Plus, Minus, Trash2, Calculator, Banknote, 
   CreditCard, QrCode, X, Check, Search, Package, User,
@@ -26,16 +26,29 @@ export const PDV: React.FC<PDVProps> = ({ onClose }) => {
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [categories, setCategories] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadProducts();
   }, []);
 
   const loadProducts = async () => {
-    const prods = await db.getActiveProducts();
-    setProducts(prods);
-    const cats = [...new Set(prods.map(p => p.category))];
-    setCategories(cats);
+    try {
+      setIsLoading(true);
+      setError(null);
+      console.log('PDV: Loading products...');
+      const prods = await db.getActiveProducts();
+      console.log('PDV: Products loaded:', prods.length);
+      setProducts(prods);
+      const cats = [...new Set(prods.map(p => p.category))];
+      setCategories(cats);
+    } catch (err) {
+      console.error('PDV: Error loading products:', err);
+      setError('Erro ao carregar produtos');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const filteredProducts = products.filter(p => {
@@ -158,8 +171,7 @@ export const PDV: React.FC<PDVProps> = ({ onClose }) => {
         if (paymentMethod === PaymentMethod.CASH || paymentMethod === PaymentMethod.CREDIT_CARD || paymentMethod === PaymentMethod.DEBIT_CARD) {
           await orderService.updatePaymentStatus(
             orderResult.order.id,
-            PaymentStatus.RECEIVED,
-            { paymentMethod: paymentMethod === PaymentMethod.CASH ? 'Dinheiro' : 'Cartão' }
+            PaymentStatus.RECEIVED
           );
           await orderService.updateOrderStatus(orderResult.order.id, OrderStatus.PAID);
         }

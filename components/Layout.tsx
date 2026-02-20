@@ -208,19 +208,27 @@ export const Layout: React.FC<LayoutProps> = ({
                     <>
                       <button
                         onClick={() => onViewChange('pdv')}
-                        className="p-2.5 rounded-full transition-all"
+                        className="flex items-center gap-2 px-4 py-2 rounded-full font-medium text-sm transition-all"
                         style={{ 
-                          backgroundColor: isActiveView('pdv') ? theme.colors.primary[200] : 'transparent',
+                          backgroundColor: isActiveView('pdv') ? theme.colors.primary[600] : theme.colors.primary[100],
+                          color: isActiveView('pdv') ? 'white' : theme.colors.primary[700],
                         }}
                         onMouseEnter={(e) => {
-                          if (!isActiveView('pdv')) e.currentTarget.style.backgroundColor = theme.colors.primary[100];
+                          if (!isActiveView('pdv')) {
+                            e.currentTarget.style.backgroundColor = theme.colors.primary[200];
+                            e.currentTarget.style.color = theme.colors.primary[800];
+                          }
                         }}
                         onMouseLeave={(e) => {
-                          if (!isActiveView('pdv')) e.currentTarget.style.backgroundColor = 'transparent';
+                          if (!isActiveView('pdv')) {
+                            e.currentTarget.style.backgroundColor = theme.colors.primary[100];
+                            e.currentTarget.style.color = theme.colors.primary[700];
+                          }
                         }}
                         title="PDV - Ponto de Venda"
                       >
-                        <Calculator className="w-5 h-5" style={{ color: theme.colors.primary[600] }} />
+                        <Calculator className="w-4 h-4" />
+                        <span>PDV</span>
                       </button>
                       <button
                         onClick={() => onViewChange('admin')}

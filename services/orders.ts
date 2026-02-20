@@ -4,13 +4,11 @@ import type { Order, CartItem, Address, ShippingMethod, PaymentMethod } from '..
 
 const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 
-const generateOrderNumber = () => {
-  const date = new Date();
-  const year = date.getFullYear().toString().slice(-2);
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const day = date.getDate().toString().padStart(2, '0');
-  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-  return `VP${year}${month}${day}-${random}`;
+// Gera número de pedido sequencial (#1, #2, #3...)
+const generateOrderNumber = async (): Promise<string> => {
+  const allOrders = await db.getAllOrders();
+  const orderCount = allOrders.length;
+  return (orderCount + 1).toString();
 };
 
 class OrderService {
@@ -30,9 +28,10 @@ class OrderService {
     notes?: string;
   }): Promise<{ success: boolean; order?: Order; error?: string }> {
     try {
+      const orderNumber = await generateOrderNumber();
       const order: Order = {
         id: generateId(),
-        orderNumber: generateOrderNumber(),
+        orderNumber,
         userId: data.userId,
         userName: data.userName,
         userEmail: data.userEmail,

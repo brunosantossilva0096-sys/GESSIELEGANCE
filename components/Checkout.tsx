@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { User, CartItem, Order, StoreConfig, Address } from '../types';
 import { PaymentMethod, PaymentStatus } from '../types';
-import { orderService, asaas, shippingService, emailService, pdfService } from '../services';
+import { orderService, asaas, shippingService, emailService, pdfService, whatsappService } from '../services';
 import { CreditCard, QrCode, ShieldCheck, CheckCircle2, ArrowLeft, Loader2, MapPin, Truck } from 'lucide-react';
 
 interface CheckoutProps {
@@ -20,6 +20,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
   onBack,
 }) => {
   const [step, setStep] = useState<'shipping' | 'payment' | 'confirmation'>('shipping');
+  const [deliveryType, setDeliveryType] = useState<'shipping' | 'pickup'>('shipping');
   const [selectedAddress, setSelectedAddress] = useState<Address | null>(
     user.addresses.find(a => a.isDefault) || user.addresses[0] || null
   );
@@ -36,7 +37,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
     return sum + price * item.quantity;
   }, 0);
 
-  const shippingCost = shippingQuote?.cost || 0;
+  const shippingCost = deliveryType === 'pickup' ? 0 : (shippingQuote?.cost || 0);
   const total = subtotal + shippingCost;
 
   const calculateShipping = async () => {
@@ -54,8 +55,12 @@ export const Checkout: React.FC<CheckoutProps> = ({
   };
 
   const handleProceedToPayment = () => {
-    if (!selectedAddress || !shippingMethod) return;
-    setStep('payment');
+    if (deliveryType === 'pickup') {
+      setStep('payment');
+    } else {
+      if (!selectedAddress || !shippingMethod) return;
+      setStep('payment');
+    }
   };
 
   const handleCompleteOrder = async () => {
@@ -63,6 +68,8 @@ export const Checkout: React.FC<CheckoutProps> = ({
 
     try {
       // Create order
+      const isPickup = deliveryType === 'pickup';
+      
       const orderResult = await orderService.createOrder({
         userId: user.id,
         userName: user.name,
@@ -70,11 +77,18 @@ export const Checkout: React.FC<CheckoutProps> = ({
         userPhone: user.phone,
         items: cart,
         subtotal,
-        shippingCost,
+        shippingCost: isPickup ? 0 : shippingCost,
         discount: 0,
         total,
         paymentMethod,
-        shippingMethod: {
+        shippingMethod: isPickup ? {
+          id: 'pickup',
+          name: 'Retirada na Loja',
+          type: 'retirada',
+          cost: 0,
+          estimatedDays: 'Imediato',
+          isActive: true,
+        } : {
           id: shippingMethod!.id,
           name: shippingMethod!.name,
           type: 'correios',
@@ -82,7 +96,17 @@ export const Checkout: React.FC<CheckoutProps> = ({
           estimatedDays: shippingQuote?.estimatedDays || '',
           isActive: true,
         },
-        shippingAddress: selectedAddress!,
+        shippingAddress: isPickup ? {
+          id: 'pickup-address',
+          name: 'Retirada',
+          street: 'Retirada na Loja',
+          number: '-',
+          neighborhood: '-',
+          city: '-',
+          state: '-',
+          zip: '00000-000',
+          isDefault: false,
+        } : selectedAddress!,
       });
 
       if (!orderResult.success || !orderResult.order) {
@@ -101,11 +125,11 @@ export const Checkout: React.FC<CheckoutProps> = ({
           email: user.email,
           cpf: user.cpf,
           phone: user.phone,
-          address: selectedAddress?.street,
-          addressNumber: selectedAddress?.number,
-          complement: selectedAddress?.complement,
-          province: selectedAddress?.neighborhood,
-          postalCode: selectedAddress?.zip,
+          address: isPickup ? 'Retirada' : selectedAddress?.street,
+          addressNumber: isPickup ? '-' : selectedAddress?.number,
+          complement: isPickup ? '-' : selectedAddress?.complement,
+          province: isPickup ? '-' : selectedAddress?.neighborhood,
+          postalCode: isPickup ? '00000-000' : selectedAddress?.zip,
         }
       );
 
@@ -135,6 +159,14 @@ export const Checkout: React.FC<CheckoutProps> = ({
           orderStatus: 'Pendente',
           paymentMethod: paymentMethod === PaymentMethod.PIX ? 'PIX' : paymentMethod === PaymentMethod.CREDIT_CARD ? 'Cartão de Crédito' : 'Cartão de Débito',
         });
+
+        // Send WhatsApp notification to store
+        whatsappService.sendOrderNotification(newOrder, isPickup);
+
+        // Send WhatsApp notification to customer if phone exists
+        if (user.phone) {
+          whatsappService.sendCustomerNotification(newOrder, user.phone);
+        }
       } else {
         alert('Erro ao processar pagamento: ' + paymentResult.error);
       }
@@ -165,96 +197,178 @@ export const Checkout: React.FC<CheckoutProps> = ({
           <ArrowLeft className="w-4 h-4" /> Voltar ao carrinho
         </button>
 
-        <h1 className="text-2xl font-bold text-gray-900 mb-8">Endereço de Entrega</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-8">Forma de Recebimento</h1>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="space-y-4">
-            {user.addresses.length === 0 ? (
-              <div className="bg-yellow-50 border border-yellow-200 p-6 rounded-xl">
-                <p className="text-yellow-800">Você precisa cadastrar um endereço antes de continuar.</p>
+        {/* Delivery Type Selection */}
+        <div className="mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <button
+              onClick={() => setDeliveryType('shipping')}
+              className={`p-6 rounded-2xl border-2 text-left transition-all ${
+                deliveryType === 'shipping'
+                  ? 'border-blue-600 bg-blue-50'
+                  : 'border-gray-200 hover:border-blue-300'
+              }`}
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <Truck className={`w-6 h-6 ${deliveryType === 'shipping' ? 'text-blue-600' : 'text-gray-400'}`} />
+                <span className="font-semibold text-gray-900">Entrega</span>
               </div>
-            ) : (
-              user.addresses.map((address) => (
-                <label
-                  key={address.id}
-                  className={`flex items-start gap-4 p-4 border-2 rounded-xl cursor-pointer transition-all ${
-                    selectedAddress?.id === address.id
-                      ? 'border-blue-600 bg-blue-50'
-                      : 'border-gray-200 hover:border-blue-300'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="address"
-                    checked={selectedAddress?.id === address.id}
-                    onChange={() => setSelectedAddress(address)}
-                    className="mt-1"
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-gray-400" />
-                      <span className="font-semibold text-gray-900">{address.name}</span>
-                      {address.isDefault && (
-                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Padrão</span>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {address.street}, {address.number}
-                      {address.complement && ` - ${address.complement}`}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {address.neighborhood} - {address.city}, {address.state}
-                    </p>
-                    <p className="text-sm text-gray-600">CEP: {address.zip}</p>
-                  </div>
-                </label>
-              ))
-            )}
+              <p className="text-sm text-gray-500">Receba em seu endereço</p>
+            </button>
 
-            {selectedAddress && !shippingQuote && (
-              <button
-                onClick={calculateShipping}
-                disabled={isLoadingShipping}
-                className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50"
-              >
-                {isLoadingShipping ? 'Calculando...' : 'Calcular Frete'}
-              </button>
-            )}
+            <button
+              onClick={() => setDeliveryType('pickup')}
+              className={`p-6 rounded-2xl border-2 text-left transition-all ${
+                deliveryType === 'pickup'
+                  ? 'border-blue-600 bg-blue-50'
+                  : 'border-gray-200 hover:border-blue-300'
+              }`}
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <MapPin className={`w-6 h-6 ${deliveryType === 'pickup' ? 'text-blue-600' : 'text-gray-400'}`} />
+                <span className="font-semibold text-gray-900">Retirada</span>
+              </div>
+              <p className="text-sm text-gray-500">Retire na loja (sem frete)</p>
+            </button>
           </div>
+        </div>
 
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 h-fit">
-            <h3 className="font-bold text-lg mb-6">Resumo</h3>
+        {deliveryType === 'shipping' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="space-y-4">
+              {user.addresses.length === 0 ? (
+                <div className="bg-yellow-50 border border-yellow-200 p-6 rounded-xl">
+                  <p className="text-yellow-800">Você precisa cadastrar um endereço antes de continuar.</p>
+                </div>
+              ) : (
+                user.addresses.map((address) => (
+                  <label
+                    key={address.id}
+                    className={`flex items-start gap-4 p-4 border-2 rounded-xl cursor-pointer transition-all ${
+                      selectedAddress?.id === address.id
+                        ? 'border-blue-600 bg-blue-50'
+                        : 'border-gray-200 hover:border-blue-300'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="address"
+                      checked={selectedAddress?.id === address.id}
+                      onChange={() => setSelectedAddress(address)}
+                      className="mt-1"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-gray-400" />
+                        <span className="font-semibold text-gray-900">{address.name}</span>
+                        {address.isDefault && (
+                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Padrão</span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {address.street}, {address.number}
+                        {address.complement && ` - ${address.complement}`}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {address.neighborhood} - {address.city}, {address.state}
+                      </p>
+                      <p className="text-sm text-gray-600">CEP: {address.zip}</p>
+                    </div>
+                  </label>
+                ))
+              )}
+
+              {selectedAddress && !shippingQuote && (
+                <button
+                  onClick={calculateShipping}
+                  disabled={isLoadingShipping}
+                  className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {isLoadingShipping ? 'Calculando...' : 'Calcular Frete'}
+                </button>
+              )}
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 h-fit">
+              <h3 className="font-bold text-lg mb-6">Resumo</h3>
+
+              <div className="space-y-3 mb-6">
+                <div className="flex justify-between text-gray-600">
+                  <span>Subtotal</span>
+                  <span>{subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                </div>
+                <div className="flex justify-between text-gray-600">
+                  <span>Frete</span>
+                  <span>
+                    {shippingQuote
+                      ? shippingQuote.cost === 0
+                        ? 'Grátis'
+                        : shippingQuote.cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                      : 'A calcular'}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xl font-bold text-gray-900 pt-3 border-t">
+                  <span>Total</span>
+                  <span>{total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                </div>
+              </div>
+
+              <button
+                onClick={handleProceedToPayment}
+                disabled={!selectedAddress || !shippingQuote}
+                className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Continuar para Pagamento
+              </button>
+            </div>
+          </div>
+        ) : (
+          // Pickup Option
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+            <div className="flex items-center gap-3 mb-4">
+              <MapPin className="w-6 h-6 text-blue-600" />
+              <div>
+                <h3 className="font-bold text-lg text-gray-900">Retirada na Loja</h3>
+                <p className="text-sm text-gray-500">Retire seu pedido presencialmente</p>
+              </div>
+            </div>
+            
+            <div className="bg-blue-50 p-4 rounded-xl mb-6">
+              <p className="text-sm text-blue-800">
+                <strong>Endereço da loja:</strong><br />
+                Rua Exemplo, 123<br />
+                Centro - São Luís, MA<br />
+                CEP: 65000-000
+              </p>
+              <p className="text-xs text-blue-600 mt-2">
+                Horário de funcionamento: Seg-Sex 9h às 18h, Sáb 9h às 13h
+              </p>
+            </div>
 
             <div className="space-y-3 mb-6">
               <div className="flex justify-between text-gray-600">
                 <span>Subtotal</span>
                 <span>{subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
               </div>
-              <div className="flex justify-between text-gray-600">
-                <span>Frete</span>
-                <span>
-                  {shippingQuote
-                    ? shippingQuote.cost === 0
-                      ? 'Grátis'
-                      : shippingQuote.cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-                    : 'A calcular'}
-                </span>
+              <div className="flex justify-between text-green-600">
+                <span>Frete (Retirada)</span>
+                <span>Grátis</span>
               </div>
               <div className="flex justify-between text-xl font-bold text-gray-900 pt-3 border-t">
                 <span>Total</span>
-                <span>{total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                <span>{subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
               </div>
             </div>
 
             <button
               onClick={handleProceedToPayment}
-              disabled={!selectedAddress || !shippingQuote}
-              className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700"
             >
               Continuar para Pagamento
             </button>
           </div>
-        </div>
+        )}
       </div>
     );
   }
